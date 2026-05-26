@@ -268,12 +268,18 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
       <div class="champ-col"><label>🏆 Campeón del mundial (+10 pts)</label><select id="q-champion" onchange="saveMeta()"><option value="">— Elige un equipo —</option></select></div>
       <div class="champ-col"><label>⚽ Goleador del torneo (+10 pts)</label><input type="text" id="q-scorer" placeholder="Nombre del jugador" oninput="saveMeta()"/></div>
     </div>
-    <div style="font-size:11px;color:var(--text3)">Editables mientras la fase de grupos esté abierta</div>
+    <div style="font-size:11px;color:var(--text3)" id="champ-lock-note">Editables hasta el inicio del primer partido (11 Jun · 13:00 CDMX)</div>
   </div>
   <div id="match-area"></div>
   <div class="save-bar">
-    <div style="font-size:12px;color:var(--text2)" id="progress-text"></div>
-    <div id="save-indicator" style="font-size:13px;font-weight:700;color:var(--green);display:none">✓ Guardado</div>
+    <div style="display:flex;flex-direction:column;gap:3px;flex:1">
+      <div style="font-size:12px;color:var(--text2)" id="progress-text"></div>
+      <div id="progress-bar-wrap" style="height:5px;background:var(--border);border-radius:10px;overflow:hidden;display:none">
+        <div id="progress-bar-fill" style="height:5px;background:var(--navy);border-radius:10px;transition:width .4s"></div>
+      </div>
+      <div id="progress-warning" style="font-size:11px;color:var(--amber);display:none">⚠️ Tienes partidos sin pronosticar en esta fase</div>
+    </div>
+    <div id="save-indicator" style="font-size:13px;font-weight:700;color:var(--green);display:none;margin-left:12px">✓ Guardado</div>
   </div>
 </div>
 
@@ -332,6 +338,21 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
 
 <script>
 const ADMIN_PASS='mamba33';
+// CDMX = UTC-6. Match times are already in CDMX, convert to UTC for comparison.
+function matchLockTime(date,time){
+  const[y,mo,d]=date.split('-').map(Number);
+  const[h,mi]=time.split(':').map(Number);
+  // CDMX is UTC-6, so add 6 hours to get UTC
+  return new Date(Date.UTC(y,mo-1,d,h+6,mi,0));
+}
+function isMatchLocked(match){
+  return new Date() >= matchLockTime(match.date, match.time);
+}
+// First match: Jun 11 2026 13:00 CDMX = 19:00 UTC
+const CHAMP_LOCK_TIME = new Date(Date.UTC(2026,5,11,19,0,0));
+function isChampLocked(){
+  return new Date() >= CHAMP_LOCK_TIME;
+}
 const GS_URL='https://script.google.com/macros/s/AKfycbye5VPjDqzAmB2NITvd3BqdgfEQRvQ5SImXIoKWUI8sWdgPHE8hJ0pNxwGFYEo9ej69-w/exec';
 const PHASES=['grupos','dieciseisavos','octavos','cuartos','semis','final'];
 const PHASE_LABELS={grupos:'Grupos',dieciseisavos:'16vos',octavos:'8vos',cuartos:'4tos',semis:'Semis',final:'Final'};
@@ -353,7 +374,7 @@ const MATCHES=[
   ME(103,'final','3er lugar','Perdedor SF1','Perdedor SF2','2026-07-18','15:00','Miami'),ME(104,'final','Final','Ganador SF1','Ganador SF2','2026-07-19','13:00','MetLife NJ'),
 ];
 
-let gState={results:{},activePhase:'grupos',closedPhases:[],champion:'',scorer:''};
+let gState={results:{},activePhase:'grupos',closedPhases:[],champion:'',scorer:'',elimTeams:{}};
 let qStates={crew:{users:{},pagos:{},cuota:500},actinver:{users:{},pagos:{},cuota:500}};
 let activeQ=null,currentUser=null,isAdmin=false;
 let currentGroup='A',currentViewPhase='grupos';
@@ -373,9 +394,19 @@ function setSyncStatus(ok){
   el.innerHTML=ok?'<span style="font-size:11px;color:var(--green)"><span class="sync-dot"></span>En línea</span>':'<span style="font-size:11px;color:var(--red)">⚠️ Sin conexión</span>';
 }
 function scheduleSave(k){clearTimeout(saveTimers[k]);saveTimers[k]=setTimeout(()=>doSave(k),800);}
-async function doSave(k){
-  try{await gsSet(k,k==='global'?gState:qStates[k]);setSyncStatus(true);showSaved();}
-  catch(e){setSyncStatus(false);}
+async function doSave(k,attempt=1){
+  try{
+    await gsSet(k,k==='global'?gState:qStates[k]);
+    setSyncStatus(true);showSaved();
+  }catch(e){
+    if(attempt<3){
+      setTimeout(()=>doSave(k,attempt+1),1500*attempt);
+      setSyncStatus(false);
+    }else{
+      setSyncStatus(false);
+      console.error('Save failed after 3 attempts',k,e);
+    }
+  }
 }
 
 async function init(){
@@ -547,13 +578,14 @@ function renderPipeline(){
 function viewPhase(ph){currentViewPhase=ph;renderPipeline();renderMatchArea();}
 function isPhaseFrozen(ph){return gState.closedPhases?.includes(ph)||false;}
 function canEdit(ph){return ph===gState.activePhase&&!isPhaseFrozen(ph);}
+function canEditMatch(match){return canEdit(match.phase)&&!isMatchLocked(match);}
 
 function renderQuiniela(){
   if(!currentUser||isAdmin||!activeQ)return;
   const u=qStates[activeQ].users[currentUser];
   document.getElementById('onboarding-banner').style.display=u?.seenOnboarding?'none':'';
   renderPipeline();
-  const cf=isPhaseFrozen('grupos')&&gState.activePhase!=='grupos';
+  const cf=isChampLocked();
   document.getElementById('q-champion').disabled=cf;
   document.getElementById('q-scorer').disabled=cf;
   document.getElementById('q-champion').value=u?.champion||'';
@@ -584,18 +616,18 @@ function renderMatchArea(){
         if(ph2===rh&&pa===ra)rb=`<span class="badge badge-blue pts-badge">+3</span>`;
         else{const rw=rh>ra?'h':rh<ra?'a':'e',pw=ph2>pa?'h':ph2<pa?'a':'e';if(rw===pw)rb=`<span class="badge badge-green pts-badge">+1</span>`;}
       }
-      html+=`<div class="match-card${editable?' open':' closed'}">${rb}
+      html+=`<div class="match-card${canEditMatch(m)?' open':' closed'}">${rb}
         <div class="match-card-header">${d.toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})} · ${m.time} CDMX</div>
         <div class="match-teams">
           <div class="match-team"><div class="team-flag">${FLAGS[m.home]||'🏳'}</div><div class="team-name-card">${m.home}</div></div>
           <div class="match-scores">
-            <input class="score-box" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" ${!editable?'disabled':''} onchange="savePred(${m.id},'home',this.value)"/>
+            <input class="score-box" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" ${!canEditMatch(m)?'disabled':''} onchange="savePred(${m.id},'home',this.value)"/>
             <span class="score-sep">-</span>
-            <input class="score-box" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" ${!editable?'disabled':''} onchange="savePred(${m.id},'away',this.value)"/>
+            <input class="score-box" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" ${!canEditMatch(m)?'disabled':''} onchange="savePred(${m.id},'away',this.value)"/>
           </div>
           <div class="match-team"><div class="team-flag">${FLAGS[m.away]||'🏳'}</div><div class="team-name-card">${m.away}</div></div>
         </div>
-        <div class="match-status"><span class="dot ${editable?'dot-open':'dot-closed'}"></span><span style="color:var(--text3)">${editable?'Abierto':frozen||isPast?'Cerrado':'Bloqueado'}</span></div>
+        <div class="match-status"><span class="dot ${canEditMatch(m)?'dot-open':'dot-closed'}"></span><span style="color:var(--text3)">${canEditMatch(m)?'Abierto':'Cerrado'}</span></div>
         ${played?`<div style="text-align:center;font-size:11px;color:var(--text3);margin-top:2px">Resultado: ${r.home}-${r.away}</div>`:''}
       </div>`;
     });
@@ -603,27 +635,44 @@ function renderMatchArea(){
   }else{
     MATCHES.filter(m=>m.phase===ph).forEach(m=>{
       const p=u?.predictions?.[m.id]||{home:'',away:''};
+      const eh=gState.elimTeams?.[m.id]?.home||'';
+      const ea=gState.elimTeams?.[m.id]?.away||'';
+      const homeDisplay=eh?`${FLAGS[eh]||''} ${eh}`:m.home;
+      const awayDisplay=ea?`${FLAGS[ea]||''} ${ea}`:m.away||m.label;
+      const r=gState.results[m.id];
+      const played=r&&r.home!==''&&r.away!=='';
       html+=`<div class="elim-card">
-        <div style="width:85px;flex-shrink:0"><div style="font-size:12px;font-weight:700;color:var(--text2)">${m.label}</div><div style="font-size:10px;color:var(--text3)">${m.date} ${m.time}</div></div>
-        <div style="flex:1;display:flex;align-items:center"><span style="font-size:13px;font-weight:500">${m.home}</span></div>
-        <div style="display:flex;align-items:center;gap:4px">
-          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" ${!editable?'disabled':''} onchange="savePred(${m.id},'home',this.value)"/>
+        <div style="width:70px;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:var(--text2)">${m.label}</div><div style="font-size:10px;color:var(--text3)">${m.date}<br/>${m.time} CDMX</div></div>
+        <div style="flex:1;display:flex;align-items:center"><span style="font-size:13px;font-weight:500">${homeDisplay}</span></div>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" ${!canEditMatch(m)?'disabled':''} onchange="savePred(${m.id},'home',this.value)"/>
           <span style="font-size:14px;color:var(--text3)">-</span>
-          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" ${!editable?'disabled':''} onchange="savePred(${m.id},'away',this.value)"/>
+          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" ${!canEditMatch(m)?'disabled':''} onchange="savePred(${m.id},'away',this.value)"/>
         </div>
-        <div style="flex:1;display:flex;justify-content:flex-end"><span style="font-size:13px;font-weight:500;text-align:right">${m.away}</span></div>
+        <div style="flex:1;display:flex;justify-content:flex-end"><span style="font-size:13px;font-weight:500;text-align:right">${awayDisplay}</span></div>
+        ${played?`<div style="width:100%;text-align:center;font-size:11px;color:var(--text3);margin-top:4px">Resultado: ${r.home}-${r.away}</div>`:''}
       </div>`;
     });
   }
   const allPh=MATCHES.filter(m=>m.phase===gState.activePhase);
   const filled=allPh.filter(m=>{const p=u?.predictions?.[m.id];return p&&p.home!==''&&p.away!=='';}).length;
-  document.getElementById('progress-text').textContent=`${filled}/${allPh.length} pronósticos en ${PHASE_LABELS[gState.activePhase]} (${Math.round(filled/(allPh.length||1)*100)}%)`;
+  const pct=Math.round(filled/(allPh.length||1)*100);
+  const complete=filled===allPh.length;
+  document.getElementById('progress-text').textContent=complete
+    ?`✅ ¡Fase completa! ${filled}/${allPh.length} partidos pronosticados`
+    :`${filled}/${allPh.length} pronósticos en ${PHASE_LABELS[gState.activePhase]} (${pct}%)`;
+  document.getElementById('progress-text').style.color=complete?'var(--green)':'var(--text2)';
+  const barWrap=document.getElementById('progress-bar-wrap');
+  const barFill=document.getElementById('progress-bar-fill');
+  const warn=document.getElementById('progress-warning');
+  if(barWrap){barWrap.style.display='';barFill.style.width=pct+'%';barFill.style.background=complete?'var(--green)':'var(--navy)';}
+  if(warn){warn.style.display=(!complete&&pct>0&&pct<100)?'':'none';}
   document.getElementById('match-area').innerHTML=html;
 }
 function setGroup(g){currentGroup=g;renderMatchArea();}
 function savePred(matchId,side,val){
   if(!currentUser||isAdmin||!activeQ)return;
-  const ph=MATCHES.find(m=>m.id===matchId)?.phase;if(!canEdit(ph))return;
+  const match=MATCHES.find(m=>m.id===matchId);if(!match||!canEditMatch(match))return;
   const u=qStates[activeQ].users[currentUser];
   if(!u.predictions)u.predictions={};if(!u.predictions[matchId])u.predictions[matchId]={home:'',away:''};
   u.predictions[matchId][side]=val;u.lastEdit=new Date().toISOString();scheduleSave(activeQ);
@@ -702,6 +751,18 @@ function renderDateFilter(){
 }
 function setDateFilter(d){adminDateFilter=d;renderDateFilter();renderAdminMatchList();}
 function renderAdminMatches(){renderDateFilter();renderAdminMatchList();}
+function teamOption(val){
+  return`<option value="">— Equipo —</option>`+ALL_TEAMS.map(t=>`<option value="${t}" ${val===t?'selected':''}>${FLAGS[t]||''} ${t}</option>`).join('');
+}
+function getElimTeam(matchId,side){
+  return gState.elimTeams?.[matchId]?.[side]||'';
+}
+function saveElimTeam(matchId,side,val){
+  if(!gState.elimTeams)gState.elimTeams={};
+  if(!gState.elimTeams[matchId])gState.elimTeams[matchId]={home:'',away:''};
+  gState.elimTeams[matchId][side]=val;
+  scheduleSave('global');renderAdminMatchList();
+}
 function renderAdminMatchList(){
   const filtered=adminDateFilter==='all'?MATCHES:MATCHES.filter(m=>m.date===adminDateFilter);
   const byPhase={};filtered.forEach(m=>{if(!byPhase[m.phase])byPhase[m.phase]=[];byPhase[m.phase].push(m);});
@@ -711,16 +772,35 @@ function renderAdminMatchList(){
     html+=`<div class="section-label">${PHASE_LABELS[ph]}</div>`;
     byPhase[ph].forEach(m=>{
       const r=gState.results[m.id]||{home:'',away:''},isG=m.phase==='grupos',played=r.home!==''&&r.away!=='';
-      html+=`<div class="admin-match-row">
-        <div><div style="font-size:12px;font-weight:500">${isG?(FLAGS[m.home]||'')+' ':''}<span>${m.home}</span></div><div style="font-size:10px;color:var(--text3)">${m.date} ${m.time} · ${m.venue}</div></div>
-        <div style="display:flex;align-items:center;gap:4px">
-          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${r.home}" onchange="saveResult(${m.id},'home',this.value)"/>
-          <span style="font-size:14px;color:var(--text3)">-</span>
-          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${r.away}" onchange="saveResult(${m.id},'away',this.value)"/>
-          <span>${played?'✅':'⬜'}</span>
-        </div>
-        <div style="text-align:right;font-size:12px;font-weight:500">${isG?(FLAGS[m.away]||'')+' ':''}<span>${m.away||m.label||''}</span></div>
-      </div>`;
+      const eh=getElimTeam(m.id,'home'),ea=getElimTeam(m.id,'away');
+      const homeLabel=isG?`${FLAGS[m.home]||''} ${m.home}`:eh?`${FLAGS[eh]||''} ${eh}`:`<span style="color:var(--text3)">${m.home}</span>`;
+      const awayLabel=isG?`${FLAGS[m.away]||''} ${m.away}`:ea?`${FLAGS[ea]||''} ${ea}`:`<span style="color:var(--text3)">${m.away||m.label||''}</span>`;
+      if(isG){
+        html+=`<div class="admin-match-row">
+          <div><div style="font-size:12px;font-weight:500">${homeLabel}</div><div style="font-size:10px;color:var(--text3)">${m.date} ${m.time} · ${m.venue}</div></div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${r.home}" onchange="saveResult(${m.id},'home',this.value)"/>
+            <span style="font-size:14px;color:var(--text3)">-</span>
+            <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${r.away}" onchange="saveResult(${m.id},'away',this.value)"/>
+            <span>${played?'✅':'⬜'}</span>
+          </div>
+          <div style="text-align:right;font-size:12px;font-weight:500">${awayLabel}</div>
+        </div>`;
+      } else {
+        html+=`<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${m.label} · ${m.date} ${m.time} · ${m.venue}</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select style="flex:1;min-width:140px;font-size:12px;padding:4px 6px" onchange="saveElimTeam(${m.id},'home',this.value)">${teamOption(eh)}</select>
+            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${r.home}" onchange="saveResult(${m.id},'home',this.value)"/>
+              <span style="font-size:14px;color:var(--text3)">-</span>
+              <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${r.away}" onchange="saveResult(${m.id},'away',this.value)"/>
+              <span>${played?'✅':'⬜'}</span>
+            </div>
+            <select style="flex:1;min-width:140px;font-size:12px;padding:4px 6px" onchange="saveElimTeam(${m.id},'away',this.value)">${teamOption(ea)}</select>
+          </div>
+        </div>`;
+      }
     });
   });
   document.getElementById('admin-matches-list').innerHTML=html||'<p style="font-size:13px;color:var(--text3);padding:1rem 0;text-align:center">Sin partidos en esta fecha</p>';
@@ -878,6 +958,17 @@ function adminTab(tab){
   if(tab==='bolsa')renderBolsa();if(tab==='participantes')renderAdminUsers();
 }
 init();
+// Auto-refresh data every 60 seconds (only ranking, silent)
+setInterval(async()=>{
+  try{
+    const[g,cr,ac]=await Promise.all([gsGet('global'),gsGet('crew'),gsGet('actinver')]);
+    gState={...gState,...g};
+    qStates.crew={...qStates.crew,...cr};
+    qStates.actinver={...qStates.actinver,...ac};
+    renderRanking();
+    setSyncStatus(true);
+  }catch(e){setSyncStatus(false);}
+},60000);
 </script>
 </body>
 </html>
