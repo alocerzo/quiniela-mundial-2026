@@ -870,12 +870,21 @@ function toggleDescalificado(name,qKey){
   scheduleSave(qKey);renderAdminUsers();renderRanking();
   showAdminMsg((u.descalificado?'🚫 '+name+' descalificado':'✓ '+name+' reactivado'),'green');
 }
-function deleteUser(name,qKey){
+async function deleteUser(name,qKey){
   if(!confirm(`Eliminar a ${name} completamente? Se borran sus datos, predicciones y pagos.`))return;
   delete qStates[qKey].users[name];
   delete qStates[qKey].pagos[name];
-  saveQState(qKey);renderAdminUsers();renderRanking();
-  showAdminMsg(name+' eliminado','red');
+  showAdminMsg('Eliminando...','green');
+  clearTimeout(saveTimers[qKey]);
+  try{
+    await gsSet(qKey,qStates[qKey]);
+    setSyncStatus(true);
+    showAdminMsg(name+' eliminado correctamente','green');
+  }catch(e){
+    setSyncStatus(false);
+    showAdminMsg('Error al eliminar. Intenta de nuevo.','red');
+  }
+  renderAdminUsers();renderRanking();
 }
 function resetUser(name,qKey){
   if(!confirm(`¿Resetear la quiniela de ${name}?`))return;
