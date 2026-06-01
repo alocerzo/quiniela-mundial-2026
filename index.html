@@ -522,7 +522,9 @@ function renderRanking(){
     else if(i===1){bg='background:#F8FAFF';border='border-left:3px solid #9CA3AF';}
     else if(i===2){bg='background:#FFF7F3';border='border-left:3px solid #CD7F32';}
     else if(isLast){bg='background:#FFF5F5';border='border-left:3px solid #FCA5A5';}
-    const mpBadge=isLast&&!disq?'<span style="font-size:10px;background:#FEE2E2;color:#991B1B;padding:1px 6px;border-radius:10px;font-weight:700;margin-left:4px">MP 🤦</span>':'';
+    const isFirst=i===0&&!disq&&ranked.length>1;
+    const funFirst=isFirst?'<span style="font-size:10px;background:#FEF3C7;color:#92400E;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:5px">es el que sabe mas 🧠</span>':'';
+    const mpBadge=isLast&&!disq?'<span style="font-size:10px;background:#FEE2E2;color:#991B1B;padding:1px 6px;border-radius:10px;font-weight:700;margin-left:4px">MP 🤦 no sabe nada</span>':'';
     const disqBadge=disq?'<span style="font-size:10px;background:var(--gray-bg);color:var(--text3);padding:1px 6px;border-radius:10px;font-weight:700;margin-left:4px">Descalificado</span>':'';
     const prizeBadge=!disq&&i===0?`<div style="font-size:11px;color:#B45309;font-weight:600">$${p1.toLocaleString('es-MX')}</div>`:!disq&&i===1?`<div style="font-size:11px;color:#6B7280;font-weight:600">$${p2.toLocaleString('es-MX')}</div>`:!disq&&i===2?`<div style="font-size:11px;color:#CD7F32;font-weight:600">$${p3.toLocaleString('es-MX')}</div>`:'';
     return`<div class="rank-row" style="${bg};${border};padding-left:${border?'10px':'0'};border-radius:${border?'var(--radius-sm)':'0'}">
@@ -531,7 +533,7 @@ function renderRanking(){
         ${disq?'🚫':getInitials(u.name)}
       </div>
       <div style="flex:1">
-        <div style="font-size:14px;font-weight:600;${disq?'text-decoration:line-through;color:var(--text3)':''}">${u.name}${mpBadge}${disqBadge}</div>
+        <div style="font-size:14px;font-weight:600;${disq?'text-decoration:line-through;color:var(--text3)':''}">${u.name}${funFirst}${mpBadge}${disqBadge}</div>
         <div style="font-size:11px;color:var(--text3)">${u.exact} exactos · ${u.winner} ganadores</div>
       </div>
       <div style="text-align:right">
@@ -858,6 +860,7 @@ function renderAdminUsers(){
           <button class="btn btn-xs" onclick="openPassModal('${name}','${qKey}')">🔑</button>
           <button class="btn btn-xs" style="${u.descalificado?'background:#F3F4F6;color:#6B7280':'background:#FEE2E2;color:#991B1B'}" onclick="toggleDescalificado('${name}','${qKey}')">${u.descalificado?'✓ Descal.':'🚫 Descal.'}</button>
           <button class="btn btn-danger btn-xs" onclick="resetUser('${name}','${qKey}')">Reset</button>
+          <button class="btn btn-danger btn-xs" onclick="deleteUser('${name}','${qKey}')">🗑️ Eliminar</button>
         </div>
       </div>
     </div>`;
@@ -868,6 +871,13 @@ function toggleDescalificado(name,qKey){
   u.descalificado=!u.descalificado;
   scheduleSave(qKey);renderAdminUsers();renderRanking();
   showAdminMsg((u.descalificado?'🚫 '+name+' descalificado':'✓ '+name+' reactivado'),'green');
+}
+function deleteUser(name,qKey){
+  if(!confirm(`Eliminar a ${name} completamente? Se borran sus datos, predicciones y pagos.`))return;
+  delete qStates[qKey].users[name];
+  delete qStates[qKey].pagos[name];
+  saveQState(qKey);renderAdminUsers();renderRanking();
+  showAdminMsg(name+' eliminado','red');
 }
 function resetUser(name,qKey){
   if(!confirm(`¿Resetear la quiniela de ${name}?`))return;
