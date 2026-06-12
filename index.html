@@ -856,6 +856,7 @@ function renderAdminUsers(){
         <span class="badge ${pc}">${pl}</span>
         <div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap">
           <button class="btn btn-xs" onclick="openPassModal('${name}','${qKey}')">🔑</button>
+          <button class="btn btn-xs" style="background:var(--blue-bg);color:var(--blue)" onclick="openPredModal('${name}','${qKey}')">✏️ Picks</button>
           <button class="btn btn-xs" style="${u.descalificado?'background:#F3F4F6;color:#6B7280':'background:#FEE2E2;color:#991B1B'}" onclick="toggleDescalificado('${name}','${qKey}')">${u.descalificado?'✓ Descal.':'🚫 Descal.'}</button>
           <button class="btn btn-danger btn-xs" onclick="resetUser('${name}','${qKey}')">Reset</button>
           <button class="btn btn-danger btn-xs" onclick="deleteUser('${name}','${qKey}')">🗑️ Eliminar</button>
@@ -974,6 +975,84 @@ function adminTab(tab){
   tabs.forEach(t=>{const el=document.getElementById('admin-'+t);if(el)el.style.display=t===tab?'':'none';});
   if(tab==='bolsa')renderBolsa();if(tab==='participantes')renderAdminUsers();
 }
+// ── PRED MODAL ────────────────────────────────────────────────────────────────
+let predModalUser=null, predModalQ=null;
+
+function openPredModal(name,qKey){
+  predModalUser=name; predModalQ=qKey;
+  document.getElementById('pred-modal-title').textContent='✏️ Picks de '+name;
+  document.getElementById('pred-modal-sub').textContent=QUINIELAS[qKey].emoji+' '+QUINIELAS[qKey].name;
+  document.getElementById('pred-phase-select').value=gState.activePhase;
+  document.getElementById('pred-modal-msg').innerHTML='';
+  renderPredModalMatches();
+  document.getElementById('pred-modal').style.display='flex';
+}
+
+function closePredModal(){
+  document.getElementById('pred-modal').style.display='none';
+  predModalUser=null; predModalQ=null;
+}
+
+function renderPredModalMatches(){
+  const ph=document.getElementById('pred-phase-select').value;
+  const u=qStates[predModalQ].users[predModalUser];
+  const phMatches=MATCHES.filter(m=>m.phase===ph);
+  
+  let html='<div style="display:flex;flex-direction:column;gap:6px">';
+  phMatches.forEach(m=>{
+    const p=u?.predictions?.[m.id]||{home:'',away:''};
+    const r=gState.results[m.id];
+    const played=r&&r.home!==''&&r.away!=='';
+    const eh=gState.elimTeams?.[m.id]?.home||'';
+    const ea=gState.elimTeams?.[m.id]?.away||'';
+    const homeLabel=m.phase==='grupos'?(FLAGS[m.home]||'')+' '+m.home:eh?(FLAGS[eh]||'')+' '+eh:m.home;
+    const awayLabel=m.phase==='grupos'?(FLAGS[m.away]||'')+' '+m.away:ea?(FLAGS[ea]||'')+' '+ea:m.away||m.label;
+    const resultStr=played?` <span style="font-size:10px;color:var(--text3)">(resultado: ${r.home}-${r.away})</span>`:'';
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+      <div style="flex:1;font-size:11px;font-weight:500;min-width:0">${homeLabel}${resultStr}</div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" data-mid="${m.id}" data-side="home" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
+        <span style="color:var(--text3)">-</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" data-mid="${m.id}" data-side="away" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
+      </div>
+      <div style="flex:1;font-size:11px;font-weight:500;text-align:right;min-width:0">${awayLabel}</div>
+    </div>`;
+  });
+  html+='</div>';
+  document.getElementById('pred-modal-matches').innerHTML=html;
+}
+
+async function savePredModal(){
+  const u=qStates[predModalQ].users[predModalUser];
+  if(!u.predictions)u.predictions={};
+  
+  // Read all inputs in the modal
+  const inputs=document.querySelectorAll('#pred-modal-matches input');
+  inputs.forEach(inp=>{
+    const mid=parseInt(inp.dataset.mid);
+    const side=inp.dataset.side;
+    if(!u.predictions[mid])u.predictions[mid]={home:'',away:''};
+    u.predictions[mid][side]=inp.value;
+  });
+  u.lastEdit=new Date().toISOString()+'(admin)';
+  
+  const msgEl=document.getElementById('pred-modal-msg');
+  msgEl.innerHTML='<div class="msg msg-amber">Guardando...</div>';
+  
+  clearTimeout(saveTimers[predModalQ]);
+  try{
+    await gsSet(predModalQ,qStates[predModalQ]);
+    setSyncStatus(true);
+    msgEl.innerHTML='<div class="msg msg-green">✅ Guardado correctamente</div>';
+    renderRanking();
+    renderAdminUsers();
+    setTimeout(()=>{msgEl.innerHTML='';},2500);
+  }catch(e){
+    setSyncStatus(false);
+    msgEl.innerHTML='<div class="msg msg-red">Error al guardar. Intenta de nuevo.</div>';
+  }
+}
+
 init();
 // Auto-refresh data every 60 seconds (only ranking, silent)
 setInterval(async()=>{
