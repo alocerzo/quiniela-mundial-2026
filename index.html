@@ -178,6 +178,35 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
   </div>
 </div>
 
+<!-- MODAL PREDICCIONES -->
+<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;z-index:200;padding:1rem;backdrop-filter:blur(2px);overflow-y:auto" id="pred-modal">
+  <div style="background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);padding:1.5rem;width:100%;max-width:560px;margin:auto;box-shadow:var(--shadow-md)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div>
+        <div style="font-size:15px;font-weight:700" id="pred-modal-title">Predicciones</div>
+        <div style="font-size:12px;color:var(--text2)" id="pred-modal-sub">—</div>
+      </div>
+      <button onclick="closePredModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text2)">×</button>
+    </div>
+    <div id="pred-modal-msg"></div>
+    <div style="margin-bottom:.75rem">
+      <select id="pred-phase-select" style="width:100%;font-size:13px" onchange="renderPredModalMatches()">
+        <option value="grupos">Grupos</option>
+        <option value="dieciseisavos">16vos</option>
+        <option value="octavos">8vos</option>
+        <option value="cuartos">4tos</option>
+        <option value="semis">Semis</option>
+        <option value="final">Final</option>
+      </select>
+    </div>
+    <div id="pred-modal-matches" style="max-height:60vh;overflow-y:auto"></div>
+    <div style="margin-top:1rem;display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="savePredModal()">💾 Guardar cambios</button>
+      <button class="btn" onclick="closePredModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div class="top-bar">
   <div>
     <div class="top-bar-title">🏆 Quiniela Mundial 2026</div>
