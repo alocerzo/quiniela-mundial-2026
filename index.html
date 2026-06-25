@@ -1098,7 +1098,7 @@ function openResultsModal(){
         <div style="flex:1;font-size:12px;font-weight:500;text-align:right">${hFlag} ${hName}</div>
         <div style="font-size:15px;font-weight:700;color:var(--navy);min-width:48px;text-align:center">${r.home} - ${r.away}</div>
         <div style="flex:1;font-size:12px;font-weight:500">${aFlag} ${aName}</div>
-        ${isLast?'<span style="font-size:10px;background:var(--green);color:#fff;padding:1px 6px;border-radius:10px;font-weight:700;white-space:nowrap">Último ⏱️</span>':'<span style="font-size:10px;color:var(--text3)">${dateStr}</span>'}
+        ${isLast?'<span style="font-size:10px;background:var(--green);color:#fff;padding:1px 6px;border-radius:10px;font-weight:700;white-space:nowrap">Último ⏱️</span>':'<span style="font-size:10px;color:var(--text3)">'+dateStr+'</span>'}
       </div>`;
     });
   });
