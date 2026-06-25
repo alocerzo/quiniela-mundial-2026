@@ -207,6 +207,20 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
   </div>
 </div>
 
+<!-- MODAL RESULTADOS -->
+<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;z-index:200;padding:1rem;backdrop-filter:blur(2px);overflow-y:auto" id="results-modal">
+  <div style="background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);padding:1.5rem;width:100%;max-width:560px;margin:auto;box-shadow:var(--shadow-md)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div>
+        <div style="font-size:15px;font-weight:700">📋 Resultados del torneo</div>
+        <div style="font-size:12px;color:var(--text2)" id="results-modal-sub">—</div>
+      </div>
+      <button onclick="closeResultsModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text2)">×</button>
+    </div>
+    <div id="results-modal-content" style="max-height:65vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <div class="top-bar">
   <div>
     <div class="top-bar-title">🏆 Quiniela Mundial 2026</div>
@@ -244,8 +258,11 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
     </div>
     <div id="ranking-list"><p style="font-size:13px;color:var(--text3);text-align:center;padding:2rem 0">Cargando...</p></div>
     <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap">
-      <div style="font-size:12px;color:var(--text2)">Partidos jugados: <span id="stat-played">0</span>/104</div>
-      <button class="btn btn-sm" onclick="copyRanking()" id="copy-btn">📋 Copiar para WhatsApp</button>
+      <div style="font-size:12px;color:var(--text2)">Partidos jugados: <span id="stat-played">0</span>/104 · <span id="last-result-label" style="color:var(--green);font-weight:500"></span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="openResultsModal()">📋 Ver resultados</button>
+        <button class="btn btn-sm" onclick="copyRanking()" id="copy-btn">📤 Copiar ranking</button>
+      </div>
     </div>
   </div>
   <div class="card">
@@ -425,7 +442,19 @@ function setSyncStatus(ok){
 function scheduleSave(k){clearTimeout(saveTimers[k]);saveTimers[k]=setTimeout(()=>doSave(k),800);}
 async function doSave(k,attempt=1){
   try{
-    await gsSet(k,k==='global'?gState:qStates[k]);
+    const data=k==='global'?gState:qStates[k];
+    if(k!=='global'){
+      try{
+        const current=await gsGet(k);
+        const currentCount=Object.keys(current?.users||{}).length;
+        const newCount=Object.keys(data?.users||{}).length;
+        if(currentCount>0&&newCount<currentCount){
+          console.warn(`Blocked save on ${k}: would reduce users from ${currentCount} to ${newCount}`);
+          setSyncStatus(false);return;
+        }
+      }catch(e){/* check failed, proceed */}
+    }
+    await gsSet(k,data);
     setSyncStatus(true);showSaved();
   }catch(e){
     if(attempt<3){
@@ -504,6 +533,17 @@ function renderRanking(){
   document.getElementById('current-phase-badge').textContent=PHASE_LABELS[gState.activePhase];
   const played=Object.values(gState.results).filter(r=>r&&r.home!==''&&r.away!=='').length;
   document.getElementById('stat-played').textContent=played;
+  // Last result label
+  const lastMatch=getLastPlayedMatch();
+  const lrEl=document.getElementById('last-result-label');
+  if(lrEl&&lastMatch){
+    const r=gState.results[lastMatch.id];
+    const hFlag=FLAGS[lastMatch.home]||'';
+    const aFlag=FLAGS[lastMatch.away]||'';
+    const hName=lastMatch.phase==='grupos'?lastMatch.home:(gState.elimTeams?.[lastMatch.id]?.home||lastMatch.home);
+    const aName=lastMatch.phase==='grupos'?lastMatch.away:(gState.elimTeams?.[lastMatch.id]?.away||lastMatch.away);
+    lrEl.textContent=`Hasta: ${hFlag}${hName} ${r.home}-${r.away} ${aFlag}${aName}`;
+  }else if(lrEl){lrEl.textContent='';}
   if(!qKey){document.getElementById('participants-count').textContent='0 participantes';return;}
   const users=Object.keys(qStates[qKey]?.users||{});
   document.getElementById('participants-count').textContent=users.length+' participantes';
@@ -878,7 +918,12 @@ function renderAdminUsers(){
       <div style="flex:1;min-width:120px">
         <div style="font-size:13px;font-weight:600">${name}</div>
         <div style="font-size:11px;color:var(--text3)">Último cambio: ${edit}</div>
-        <div style="font-size:11px;color:var(--text2)">🏆 ${u.champion||'—'} · ⚽ ${u.scorer||'—'}</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text2)">🏆</span>
+          <input type="text" value="${u.champion||''}" placeholder="Campeón" style="font-size:11px;padding:2px 6px;width:110px;border-radius:6px;border:1px solid var(--border)" onchange="saveUserMeta('${name}','${qKey}','champion',this.value)"/>
+          <span style="font-size:11px;color:var(--text2)">⚽</span>
+          <input type="text" value="${u.scorer||''}" placeholder="Goleador" style="font-size:11px;padding:2px 6px;width:110px;border-radius:6px;border:1px solid var(--border)" onchange="saveUserMeta('${name}','${qKey}','scorer',this.value)"/>
+        </div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
         <div style="font-size:16px;font-weight:700;color:var(--navy)">${pts.pts} <span style="font-size:12px;color:var(--text3);font-weight:400">pts</span></div>
@@ -893,6 +938,11 @@ function renderAdminUsers(){
       </div>
     </div>`;
   }).join('');
+}
+function saveUserMeta(name,qKey,field,val){
+  qStates[qKey].users[name][field]=val;
+  scheduleSave(qKey);
+  showAdminMsg(`${field==='champion'?'🏆 Campeón':'⚽ Goleador'} de ${name} actualizado`,'green');
 }
 function toggleDescalificado(name,qKey){
   const u=qStates[qKey].users[name];
@@ -1004,6 +1054,63 @@ function adminTab(tab){
   tabs.forEach(t=>{const el=document.getElementById('admin-'+t);if(el)el.style.display=t===tab?'':'none';});
   if(tab==='bolsa')renderBolsa();if(tab==='participantes')renderAdminUsers();
 }
+// ── RESULTS MODAL ────────────────────────────────────────────────────────────
+function getLastPlayedMatch(){
+  const played=MATCHES.filter(m=>{const r=gState.results[m.id];return r&&r.home!==''&&r.away!=='';});
+  if(!played.length)return null;
+  // Sort by date+time descending, return most recent
+  return played.sort((a,b)=>{
+    const ta=new Date(a.date+'T'+a.time.replace(':','')>4?a.time+':00':a.time+':00');
+    const tb=new Date(b.date+'T'+b.time+':00');
+    return b.date.localeCompare(a.date)||b.time.localeCompare(a.time)||b.id-a.id;
+  })[0];
+}
+
+function openResultsModal(){
+  const played=MATCHES.filter(m=>{const r=gState.results[m.id];return r&&r.home!==''&&r.away!=='';});
+  const total=played.length;
+  document.getElementById('results-modal-sub').textContent=`${total} partidos con resultado`;
+  
+  if(!total){
+    document.getElementById('results-modal-content').innerHTML='<p style="font-size:13px;color:var(--text3);text-align:center;padding:2rem 0">Sin resultados capturados aún</p>';
+    document.getElementById('results-modal').style.display='flex';
+    return;
+  }
+
+  const lastMatch=getLastPlayedMatch();
+  const byPhase={};
+  played.forEach(m=>{if(!byPhase[m.phase])byPhase[m.phase]=[];byPhase[m.phase].push(m);});
+
+  let html='';
+  PHASES.forEach(ph=>{
+    if(!byPhase[ph]?.length)return;
+    html+=`<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin:1rem 0 .5rem;padding-bottom:4px;border-bottom:1px solid var(--border)">${PHASE_LABELS[ph]}</div>`;
+    byPhase[ph].forEach(m=>{
+      const r=gState.results[m.id];
+      const isLast=lastMatch&&m.id===lastMatch.id;
+      const hFlag=m.phase==='grupos'?(FLAGS[m.home]||''):(FLAGS[gState.elimTeams?.[m.id]?.home]||'');
+      const aFlag=m.phase==='grupos'?(FLAGS[m.away]||''):(FLAGS[gState.elimTeams?.[m.id]?.away]||'');
+      const hName=m.phase==='grupos'?m.home:(gState.elimTeams?.[m.id]?.home||m.home);
+      const aName=m.phase==='grupos'?m.away:(gState.elimTeams?.[m.id]?.away||m.away||m.label);
+      const d=new Date(m.date+'T12:00:00');
+      const dateStr=d.toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'});
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--radius-sm);margin-bottom:4px;${isLast?'background:var(--green-bg);border:1px solid #BBF7D0':'background:var(--bg2);border:1px solid var(--border)'}">
+        <div style="flex:1;font-size:12px;font-weight:500;text-align:right">${hFlag} ${hName}</div>
+        <div style="font-size:15px;font-weight:700;color:var(--navy);min-width:48px;text-align:center">${r.home} - ${r.away}</div>
+        <div style="flex:1;font-size:12px;font-weight:500">${aFlag} ${aName}</div>
+        ${isLast?'<span style="font-size:10px;background:var(--green);color:#fff;padding:1px 6px;border-radius:10px;font-weight:700;white-space:nowrap">Último ⏱️</span>':'<span style="font-size:10px;color:var(--text3)">${dateStr}</span>'}
+      </div>`;
+    });
+  });
+
+  document.getElementById('results-modal-content').innerHTML=html;
+  document.getElementById('results-modal').style.display='flex';
+}
+
+function closeResultsModal(){
+  document.getElementById('results-modal').style.display='none';
+}
+
 // ── PRED MODAL ────────────────────────────────────────────────────────────────
 let predModalUser=null, predModalQ=null;
 
