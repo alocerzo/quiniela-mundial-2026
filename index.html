@@ -503,7 +503,7 @@ function initBanners(){
 
 function calcPoints(u,qKey){
   const pred=qStates[qKey]?.users[u]?.predictions||{};
-  let pts=0,exact=0,winner=0;
+  let pts=0,exact=0,winner=0,advancer=0;
   for(const[mid,r]of Object.entries(gState.results)){
     if(!r||r.home===''||r.away==='')continue;
     const p=pred[mid];if(!p)continue;
@@ -511,11 +511,19 @@ function calcPoints(u,qKey){
     if(isNaN(ph)||isNaN(pa))continue;
     if(ph===rh&&pa===ra){pts+=3;exact++;}
     else{const rw=rh>ra?'h':rh<ra?'a':'e',pw=ph>pa?'h':ph<pa?'a':'e';if(rw===pw){pts+=1;winner++;}}
+    // Advancer point (elim phases only)
+    const match=MATCHES.find(m=>m.id===parseInt(mid));
+    if(match&&match.phase!=='grupos'&&r.advancer){
+      const eh=gState.elimTeams?.[mid]?.home||match.home||'';
+      const ea=gState.elimTeams?.[mid]?.away||match.away||match.label||'';
+      const predAdv=p.advancer||(ph>pa?eh:ph<pa?ea:'');
+      if(predAdv&&predAdv===r.advancer){pts+=1;advancer++;}
+    }
   }
   const usr=qStates[qKey]?.users[u];
   if(usr?.champion&&gState.champion&&usr.champion===gState.champion)pts+=10;
   if(usr?.scorer&&gState.scorer&&usr.scorer===gState.scorer)pts+=10;
-  return{pts,exact,winner};
+  return{pts,exact,winner,advancer};
 }
 const AVS=['#BFDBFE','#BBF7D0','#FDE68A','#FECACA','#DDD6FE','#A5F3FC'];
 const AVC=['#1e40af','#166534','#92400E','#991B1B','#5B21B6','#0E7490'];
@@ -601,7 +609,7 @@ function renderRanking(){
       </div>
       <div style="flex:1">
         <div style="font-size:14px;font-weight:600;${disq?'text-decoration:line-through;color:var(--text3)':''}">${u.name}${mpBadge}${disqBadge}</div>
-        <div style="font-size:11px;color:var(--text3)">${u.exact} exactos · ${u.winner} ganadores</div>
+        <div style="font-size:11px;color:var(--text3)">${u.exact} exactos · ${u.winner} ganadores${u.advancer?' · '+u.advancer+' avances':''}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:17px;font-weight:700;color:${disq?'var(--text3)':'var(--navy)'}">${u.pts}<span style="font-size:12px;color:var(--text3);font-weight:400"> pts</span></div>
@@ -703,23 +711,55 @@ function renderMatchArea(){
     html+=`</div>`;
   }else{
     MATCHES.filter(m=>m.phase===ph).forEach(m=>{
-      const p=u?.predictions?.[m.id]||{home:'',away:''};
+      const p=u?.predictions?.[m.id]||{home:'',away:'',advancer:''};
       const eh=gState.elimTeams?.[m.id]?.home||'';
       const ea=gState.elimTeams?.[m.id]?.away||'';
       const homeDisplay=eh?`${FLAGS[eh]||''} ${eh}`:m.home;
       const awayDisplay=ea?`${FLAGS[ea]||''} ${ea}`:m.away||m.label;
+      const homeName=eh||m.home;
+      const awayName=ea||m.away||m.label;
       const r=gState.results[m.id];
       const played=r&&r.home!==''&&r.away!=='';
-      html+=`<div class="elim-card">
-        <div style="width:70px;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:var(--text2)">${m.label}</div><div style="font-size:10px;color:var(--text3)">${m.date}<br/>${m.time} CDMX</div></div>
-        <div style="flex:1;display:flex;align-items:center"><span style="font-size:13px;font-weight:500">${homeDisplay}</span></div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" ${!canEditMatch(m)?'disabled':''} onchange="savePred(${m.id},'home',this.value)"/>
-          <span style="font-size:14px;color:var(--text3)">-</span>
-          <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" ${!canEditMatch(m)?'disabled':''} onchange="savePred(${m.id},'away',this.value)"/>
+      const adv=gState.results[m.id]?.advancer||'';
+      // If score predicts a winner, advancer is automatic
+      const ph2=parseInt(p.home),pa=parseInt(p.away);
+      const isDrawPred=!isNaN(ph2)&&!isNaN(pa)&&ph2===pa;
+      const autoAdvancer=!isNaN(ph2)&&!isNaN(pa)&&ph2!==pa?(ph2>pa?homeName:awayName):'';
+      const editable=canEditMatch(m);
+      // Points preview
+      let ptsBadge='';
+      if(played&&p.home!==''&&p.away!==''){
+        const rh=parseInt(r.home),ra=parseInt(r.away);
+        let pts=0;
+        if(ph2===rh&&pa===ra)pts+=3;
+        else{const rw=rh>ra?'h':rh<ra?'a':'e',pw=ph2>pa?'h':ph2<pa?'a':'e';if(rw===pw)pts+=1;}
+        const predAdv=autoAdvancer||p.advancer||'';
+        if(adv&&predAdv&&adv===predAdv)pts+=1;
+        if(pts>0)ptsBadge=`<span class="badge ${pts>=3?'badge-blue':'badge-green'} pts-badge">+${pts}</span>`;
+      }
+      html+=`<div class="elim-card" style="flex-direction:column;gap:6px;position:relative">${ptsBadge}
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          <div style="width:70px;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:var(--text2)">${m.label}</div><div style="font-size:10px;color:var(--text3)">${m.date} ${m.time}</div></div>
+          <div style="flex:1;font-size:13px;font-weight:500">${homeDisplay}</div>
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+            <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" ${!editable?'disabled':''} onchange="savePred(${m.id},'home',this.value);updateAdvancer(${m.id})"/>
+            <span style="font-size:14px;color:var(--text3)">-</span>
+            <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" ${!editable?'disabled':''} onchange="savePred(${m.id},'away',this.value);updateAdvancer(${m.id})"/>
+          </div>
+          <div style="flex:1;font-size:13px;font-weight:500;text-align:right">${awayDisplay}</div>
         </div>
-        <div style="flex:1;display:flex;justify-content:flex-end"><span style="font-size:13px;font-weight:500;text-align:right">${awayDisplay}</span></div>
-        ${played?`<div style="width:100%;text-align:center;font-size:11px;color:var(--text3);margin-top:4px">Resultado: ${r.home}-${r.away}</div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;width:100%;padding-top:4px;border-top:1px solid var(--border)">
+          <span style="font-size:11px;color:var(--text2);flex-shrink:0">🏆 ¿Quién avanza?</span>
+          <select id="adv-${m.id}" style="flex:1;font-size:12px;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);font-family:inherit;background:var(--bg);${(!editable||autoAdvancer)?'opacity:.6;pointer-events:none':''}" onchange="saveAdvancer(${m.id},this.value)" ${(!editable||autoAdvancer)?'disabled':''}>
+            ${autoAdvancer
+              ? `<option value="${autoAdvancer}" selected>${FLAGS[autoAdvancer]||''} ${autoAdvancer} (automático)</option>`
+              : `<option value="">— Elige —</option>
+                 <option value="${homeName}" ${p.advancer===homeName?'selected':''}>${FLAGS[homeName]||''} ${homeName}</option>
+                 <option value="${awayName}" ${p.advancer===awayName?'selected':''}>${FLAGS[awayName]||''} ${awayName}</option>`
+            }
+          </select>
+          ${played&&adv?`<span style="font-size:11px;color:var(--text2)">Avanzó: ${FLAGS[adv]||''} ${adv}</span>`:''}
+        </div>
       </div>`;
     });
   }
@@ -739,6 +779,42 @@ function renderMatchArea(){
   document.getElementById('match-area').innerHTML=html;
 }
 function setGroup(g){currentGroup=g;renderMatchArea();}
+
+function saveAdvancer(matchId,val){
+  if(!currentUser||isAdmin||!activeQ)return;
+  const match=MATCHES.find(m=>m.id===matchId);
+  if(!match||!canEditMatch(match))return;
+  const u=qStates[activeQ].users[currentUser];
+  if(!u.predictions)u.predictions={};
+  if(!u.predictions[matchId])u.predictions[matchId]={home:'',away:'',advancer:''};
+  u.predictions[matchId].advancer=val;
+  u.lastEdit=new Date().toISOString();
+  scheduleSave(activeQ);
+}
+
+function updateAdvancer(matchId){
+  // When score changes, auto-update advancer dropdown if not a draw
+  if(!currentUser||isAdmin||!activeQ)return;
+  const u=qStates[activeQ].users[currentUser];
+  const p=u?.predictions?.[matchId]||{home:'',away:''};
+  const ph=parseInt(p.home),pa=parseInt(p.away);
+  const sel=document.getElementById('adv-'+matchId);
+  if(!sel)return;
+  const eh=gState.elimTeams?.[matchId]?.home||'';
+  const ea=gState.elimTeams?.[matchId]?.away||'';
+  const m=MATCHES.find(m=>m.id===matchId);
+  const homeName=eh||m?.home||'';
+  const awayName=ea||m?.away||m?.label||'';
+  if(!isNaN(ph)&&!isNaN(pa)&&ph!==pa){
+    // Auto-set advancer
+    const auto=ph>pa?homeName:awayName;
+    sel.innerHTML=`<option value="${auto}" selected>${FLAGS[auto]||''} ${auto} (automático)</option>`;
+    saveAdvancer(matchId,auto);
+  } else if(!isNaN(ph)&&!isNaN(pa)&&ph===pa){
+    // Draw - show manual selection
+    sel.innerHTML=`<option value="">— Elige —</option><option value="${homeName}">${FLAGS[homeName]||''} ${homeName}</option><option value="${awayName}">${FLAGS[awayName]||''} ${awayName}</option>`;
+  }
+}
 function savePred(matchId,side,val){
   if(!currentUser||isAdmin||!activeQ)return;
   const match=MATCHES.find(m=>m.id===matchId);if(!match||!canEditMatch(match))return;
@@ -856,9 +932,10 @@ function renderAdminMatchList(){
           <div style="text-align:right;font-size:12px;font-weight:500">${awayLabel}</div>
         </div>`;
       } else {
-        html+=`<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        const radv=r.advancer||'';
+      html+=`<div style="padding:8px 0;border-bottom:1px solid var(--border)">
           <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${m.label} · ${m.date} ${m.time} · ${m.venue}</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
             <select style="flex:1;min-width:140px;font-size:12px;padding:4px 6px" onchange="saveElimTeam(${m.id},'home',this.value)">${teamOption(eh)}</select>
             <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               <input class="score-box-sm" type="text" inputmode="numeric" pattern="[0-9]*" value="${r.home}" onchange="saveResult(${m.id},'home',this.value)"/>
@@ -868,11 +945,24 @@ function renderAdminMatchList(){
             </div>
             <select style="flex:1;min-width:140px;font-size:12px;padding:4px 6px" onchange="saveElimTeam(${m.id},'away',this.value)">${teamOption(ea)}</select>
           </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+            <span style="font-size:11px;color:var(--text2);flex-shrink:0">🏆 Equipo que avanzó:</span>
+            <select style="flex:1;font-size:12px;padding:4px 6px" onchange="saveAdvancerResult(${m.id},this.value)">
+              <option value="">— Pendiente —</option>
+              ${eh?`<option value="${eh}" ${radv===eh?'selected':''}>${FLAGS[eh]||''} ${eh}</option>`:''}
+              ${ea?`<option value="${ea}" ${radv===ea?'selected':''}>${FLAGS[ea]||''} ${ea}</option>`:''}
+            </select>
+          </div>
         </div>`;
       }
     });
   });
   document.getElementById('admin-matches-list').innerHTML=html||'<p style="font-size:13px;color:var(--text3);padding:1rem 0;text-align:center">Sin partidos en esta fecha</p>';
+}
+function saveAdvancerResult(matchId,val){
+  if(!gState.results[matchId])gState.results[matchId]={home:'',away:'',advancer:''};
+  gState.results[matchId].advancer=val;
+  scheduleSave('global');renderRanking();
 }
 function saveResult(matchId,side,val){
   if(!gState.results[matchId])gState.results[matchId]={home:'',away:''};
