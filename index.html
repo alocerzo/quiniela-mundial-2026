@@ -1233,15 +1233,32 @@ function renderPredModalMatches(){
     const ea=gState.elimTeams?.[m.id]?.away||'';
     const homeLabel=m.phase==='grupos'?(FLAGS[m.home]||'')+' '+m.home:eh?(FLAGS[eh]||'')+' '+eh:m.home;
     const awayLabel=m.phase==='grupos'?(FLAGS[m.away]||'')+' '+m.away:ea?(FLAGS[ea]||'')+' '+ea:m.away||m.label;
-    const resultStr=played?` <span style="font-size:10px;color:var(--text3)">(resultado: ${r.home}-${r.away})</span>`:'';
-    html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg2);border-radius:var(--radius-sm);border:1px solid var(--border)">
-      <div style="flex:1;font-size:11px;font-weight:500;min-width:0">${homeLabel}${resultStr}</div>
-      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" data-mid="${m.id}" data-side="home" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
-        <span style="color:var(--text3)">-</span>
-        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" data-mid="${m.id}" data-side="away" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
+    const resultStr=played?` <span style="font-size:10px;color:var(--text3)">(resultado: ${r.home}-${r.away}${r.advancer?' · avanzó: '+(FLAGS[r.advancer]||'')+' '+r.advancer:''})</span>`:'';
+    const isElimMatch=m.phase!=='grupos';
+    const homeName=eh||m.home;
+    const awayName=ea||m.away||m.label;
+    const ph2=parseInt(p.home),pa2=parseInt(p.away);
+    const autoAdv=!isNaN(ph2)&&!isNaN(pa2)&&ph2!==pa2?(ph2>pa2?homeName:awayName):'';
+    const predAdv=p.advancer||autoAdv;
+    html+=`<div style="padding:6px 8px;background:var(--bg2);border-radius:var(--radius-sm);border:1px solid var(--border);display:flex;flex-direction:column;gap:5px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;font-size:11px;font-weight:500;min-width:0">${homeLabel}${resultStr}</div>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" data-mid="${m.id}" data-side="home" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
+          <span style="color:var(--text3)">-</span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" data-mid="${m.id}" data-side="away" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
+        </div>
+        <div style="flex:1;font-size:11px;font-weight:500;text-align:right;min-width:0">${awayLabel}</div>
       </div>
-      <div style="flex:1;font-size:11px;font-weight:500;text-align:right;min-width:0">${awayLabel}</div>
+      ${isElimMatch?`<div style="display:flex;align-items:center;gap:6px;padding-top:3px;border-top:1px solid var(--border)">
+        <span style="font-size:10px;color:var(--text2);flex-shrink:0">🏆 Avanza:</span>
+        <select data-mid="${m.id}" data-side="advancer" style="flex:1;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);font-family:inherit;background:var(--bg);${autoAdv?'opacity:.7':''}">
+          <option value="">— Elige —</option>
+          <option value="${homeName}" ${predAdv===homeName?'selected':''}>${FLAGS[homeName]||''} ${homeName}${autoAdv===homeName?' (auto)':''}</option>
+          <option value="${awayName}" ${predAdv===awayName?'selected':''}>${FLAGS[awayName]||''} ${awayName}${autoAdv===awayName?' (auto)':''}</option>
+        </select>
+        ${autoAdv?'<span style="font-size:10px;color:var(--text3)">🔒</span>':''}
+      </div>`:''}
     </div>`;
   });
   html+='</div>';
@@ -1253,11 +1270,12 @@ async function savePredModal(){
   if(!u.predictions)u.predictions={};
   
   // Read all inputs in the modal
-  const inputs=document.querySelectorAll('#pred-modal-matches input');
+  const inputs=document.querySelectorAll('#pred-modal-matches input, #pred-modal-matches select');
   inputs.forEach(inp=>{
     const mid=parseInt(inp.dataset.mid);
     const side=inp.dataset.side;
-    if(!u.predictions[mid])u.predictions[mid]={home:'',away:''};
+    if(!mid||!side)return;
+    if(!u.predictions[mid])u.predictions[mid]={home:'',away:'',advancer:''};
     u.predictions[mid][side]=inp.value;
   });
   u.lastEdit=new Date().toISOString()+'(admin)';
