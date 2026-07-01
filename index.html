@@ -443,7 +443,7 @@ function setSyncStatus(ok){
   const el=document.getElementById('sync-status');if(!el)return;
   el.innerHTML=ok?'<span style="font-size:11px;color:var(--green)"><span class="sync-dot"></span>En línea</span>':'<span style="font-size:11px;color:var(--red)">⚠️ Sin conexión</span>';
 }
-function scheduleSave(k){clearTimeout(saveTimers[k]);saveTimers[k]=setTimeout(()=>doSave(k),800);}
+function scheduleSave(k){clearTimeout(saveTimers[k]);saveTimers[k]=setTimeout(()=>doSave(k),1500);}
 async function doSave(k,attempt=1){
   try{
     const data=k==='global'?gState:qStates[k];
@@ -1314,16 +1314,7 @@ async function savePredModal(){
 
 init();
 // Auto-refresh data every 60 seconds (only ranking, silent)
-setInterval(async()=>{
-  try{
-    const[g,cr,ac]=await Promise.all([gsGet('global'),gsGet('crew'),gsGet('actinver')]);
-    gState={...gState,...g};
-    qStates.crew={...qStates.crew,...cr};
-    qStates.actinver={...qStates.actinver,...ac};
-    renderRanking();
-    setSyncStatus(true);
-  }catch(e){setSyncStatus(false);}
-},60000);
+// auto-refresh removed to reduce Apps Script load
 </script>
 </body>
 </html>
