@@ -433,7 +433,11 @@ async function gsGet(bin){
   return JSON.parse(await r.text());
 }
 async function gsSet(bin,data){
-  await fetch(`${GS_URL}?action=set&bin=${bin}`,{method:'POST',body:JSON.stringify(data)});
+  const r=await fetch(`${GS_URL}?action=set&bin=${bin}`,{method:'POST',body:JSON.stringify(data)});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const txt=await r.text();
+  try{const p=JSON.parse(txt);if(p.error)throw new Error(p.error);}
+  catch(e){if(e.message!==txt)throw e;}
 }
 function setSyncStatus(ok){
   const el=document.getElementById('sync-status');if(!el)return;
@@ -1274,7 +1278,8 @@ async function savePredModal(){
   inputs.forEach(inp=>{
     const mid=parseInt(inp.dataset.mid);
     const side=inp.dataset.side;
-    if(!mid||!side)return;
+    if(!mid||isNaN(mid)||!side)return;
+    if(!['home','away','advancer'].includes(side))return;
     if(!u.predictions[mid])u.predictions[mid]={home:'',away:'',advancer:''};
     u.predictions[mid][side]=inp.value;
   });
@@ -1285,6 +1290,8 @@ async function savePredModal(){
   
   clearTimeout(saveTimers[predModalQ]);
   try{
+    // Validate data before save
+    JSON.stringify(qStates[predModalQ]); // throws if circular/corrupt
     await gsSet(predModalQ,qStates[predModalQ]);
     setSyncStatus(true);
     msgEl.innerHTML='<div class="msg msg-green">✅ Guardado correctamente</div>';
@@ -1293,7 +1300,8 @@ async function savePredModal(){
     setTimeout(()=>{msgEl.innerHTML='';},2500);
   }catch(e){
     setSyncStatus(false);
-    msgEl.innerHTML='<div class="msg msg-red">Error al guardar. Intenta de nuevo.</div>';
+    console.error('savePredModal error:',e,e?.message,e?.stack);
+    msgEl.innerHTML=`<div class="msg msg-red">Error: ${e?.message||'Intenta de nuevo'}</div>`;
   }
 }
 
