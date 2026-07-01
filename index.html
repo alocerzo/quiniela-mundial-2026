@@ -399,7 +399,7 @@ const CHAMP_LOCK_TIME = new Date(Date.UTC(2026,5,11,19,0,0));
 function isChampLocked(){
   return new Date() >= CHAMP_LOCK_TIME;
 }
-const GS_URL='https://script.google.com/macros/s/AKfycbyuzmaeKnL-YPpfIi1F7wr-N6721sM06ddPtx6FhWxdGimacQuv_ygYCLZrbysMfuHH-A/exec';
+const GS_URL='https://script.google.com/macros/s/AKfycbz80vfG2lYaLfQ73J0XVtkSva06RK3SgxoB2rzTUEcPtPlw8DXenbhKHyq3NHRFzEvMyA/exec';
 const PHASES=['grupos','dieciseisavos','octavos','cuartos','semis','final'];
 const PHASE_LABELS={grupos:'Grupos',dieciseisavos:'16vos',octavos:'8vos',cuartos:'4tos',semis:'Semis',final:'Final'};
 const QUINIELAS={
@@ -439,19 +439,62 @@ async function gsGet(bin){
   }catch(e){clearTimeout(tid);throw e;}
 }
 async function gsSet(bin,data){
-  const controller=new AbortController();
-  const tid=setTimeout(()=>controller.abort(),15000);
-  try{
-    const r=await fetch(`${GS_URL}?action=set&bin=${bin}`,{
-      method:'POST',
-      body:JSON.stringify(data),
-      signal:controller.signal
-    });
-    clearTimeout(tid);
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const txt=await r.text();
-    try{const p=JSON.parse(txt);if(p&&p.error)throw new Error(p.error);}catch(e){if(e.message!==txt)throw e;}
-  }catch(e){clearTimeout(tid);throw e;}
+  const r=await fetch(`${GS_URL}?action=set&bin=${bin}`,{method:'POST',body:JSON.stringify(data)});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+}
+
+async function gsPatchUser(bin,username){
+  const u=qStates[bin].users[username];
+  if(!u)return;
+  const payload=JSON.stringify({
+    user:username,
+    predictions:u.predictions||{},
+    champion:u.champion||'',
+    scorer:u.scorer||'',
+    lastEdit:u.lastEdit||'',
+    pass:u.pass||'',
+    registeredAt:u.registeredAt||'',
+    seenOnboarding:u.seenOnboarding||false,
+    descalificado:u.descalificado||false
+  });
+  const r=await fetch(`${GS_URL}?action=patch&bin=${bin}&data=${encodeURIComponent(payload)}`);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const txt=await r.text();
+  try{const p=JSON.parse(txt);if(p&&p.error)throw new Error(p.error);}catch(e){}
+}
+
+async function gsPatchMeta(bin){
+  const meta=JSON.stringify({
+    pagos:qStates[bin].pagos||{},
+    cuota:qStates[bin].cuota||0
+  });
+  const r=await fetch(`${GS_URL}?action=patchmeta&bin=${bin}&data=${encodeURIComponent(meta)}`);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+}
+
+// Per-user debounced patch
+const userPatchTimers={};
+function scheduleUserPatch(bin,username){
+  const key=bin+'__'+username;
+  clearTimeout(userPatchTimers[key]);
+  userPatchTimers[key]=setTimeout(async()=>{
+    const si=document.getElementById('save-indicator');
+    if(si){si.style.display='';si.style.opacity='1';si.style.color='var(--text2)';si.textContent='Guardando...';}
+    try{
+      await gsPatchUser(bin,username);
+      setSyncStatus(true);showSaved();
+    }catch(e){
+      setSyncStatus(false);
+      console.error('Patch failed:',e);
+      // Retry once
+      setTimeout(async()=>{
+        try{await gsPatchUser(bin,username);setSyncStatus(true);showSaved();}
+        catch(e2){
+          if(si){si.style.display='';si.style.opacity='1';si.style.color='var(--red)';si.textContent='⚠️ Error al guardar — recarga la página';}
+        }
+      },3000);
+    }
+  },800);
 }
 function setSyncStatus(ok){
   const el=document.getElementById('sync-status');if(!el)return;
@@ -459,23 +502,15 @@ function setSyncStatus(ok){
 }
 function scheduleSave(k){clearTimeout(saveTimers[k]);saveTimers[k]=setTimeout(()=>doSave(k),1500);}
 async function doSave(k,attempt=1){
-  // Show saving indicator
   const si=document.getElementById('save-indicator');
   if(si&&attempt===1){si.style.display='';si.style.opacity='1';si.style.color='var(--text2)';si.textContent='Guardando...';}
   try{
-    const data=k==='global'?gState:qStates[k];
-    if(k!=='global'){
-      try{
-        const current=await gsGet(k);
-        const currentCount=Object.keys(current?.users||{}).length;
-        const newCount=Object.keys(data?.users||{}).length;
-        if(currentCount>0&&newCount<currentCount){
-          console.warn(`Blocked save on ${k}: would reduce users from ${currentCount} to ${newCount}`);
-          setSyncStatus(false);return;
-        }
-      }catch(e){/* check failed, proceed */}
+    if(k==='global'){
+      await gsSet(k,gState);
+    } else {
+      // Use patch per-user instead of full set — avoids 50k char limit
+      await gsPatchMeta(k);
     }
-    await gsSet(k,data);
     setSyncStatus(true);showSaved();
   }catch(e){
     if(attempt<3){
@@ -484,14 +519,7 @@ async function doSave(k,attempt=1){
     }else{
       setSyncStatus(false);
       console.error('Save failed after 3 attempts',k,e);
-      // Show persistent warning to user
-      const si=document.getElementById('save-indicator');
-      if(si){
-        si.style.display='';
-        si.style.opacity='1';
-        si.style.color='var(--red)';
-        si.textContent='⚠️ Error al guardar — recarga la página e intenta de nuevo';
-      }
+      if(si){si.style.display='';si.style.opacity='1';si.style.color='var(--red)';si.textContent='⚠️ Error al guardar — recarga la página';}
     }
   }
 }
@@ -855,7 +883,7 @@ function saveMeta(){
   if(!currentUser||isAdmin||!activeQ)return;
   qStates[activeQ].users[currentUser].champion=document.getElementById('q-champion').value||'';
   qStates[activeQ].users[currentUser].scorer=document.getElementById('q-scorer').value||'';
-  scheduleSave(activeQ);
+  scheduleUserPatch(activeQ,currentUser);
 }
 function showSaved(){
   const el=document.getElementById('save-indicator');if(!el)return;
@@ -879,7 +907,10 @@ function doRegister(){
   if(qStates[activeQ].users[name]){showLoginMsg('Ese nombre ya existe. Usa un apodo o agrega una inicial.','red');return;}
   qStates[activeQ].users[name]={pass,predictions:{},champion:'',scorer:'',registeredAt:new Date().toISOString()};
   if(!qStates[activeQ].pagos[name])qStates[activeQ].pagos[name]={status:'pendiente',monto:0,notas:''};
-  scheduleSave(activeQ);populateSelects();loginAs(name,false);
+  scheduleUserPatch(activeQ,name);
+  // Also patch meta to save pagos
+  setTimeout(()=>gsPatchMeta(activeQ),1000);
+  populateSelects();loginAs(name,false);
 }
 function doLogin(){
   const name=document.getElementById('login-name').value.trim(),pass=document.getElementById('login-pass').value.trim();
@@ -1059,7 +1090,7 @@ function renderAdminUsers(){
 }
 function saveUserMeta(name,qKey,field,val){
   qStates[qKey].users[name][field]=val;
-  scheduleSave(qKey);
+  scheduleUserPatch(qKey,name);
   showAdminMsg(`${field==='champion'?'🏆 Campeón':'⚽ Goleador'} de ${name} actualizado`,'green');
 }
 function toggleDescalificado(name,qKey){
@@ -1147,7 +1178,8 @@ function renderBolsa(){
 function savePago(qKey,name,field,val){
   if(!qStates[qKey].pagos[name])qStates[qKey].pagos[name]={status:'pendiente',monto:0,notas:''};
   qStates[qKey].pagos[name][field]=field==='monto'?Number(val):val;
-  scheduleSave(qKey);renderBolsa();renderAdminUsers();
+  gsPatchMeta(qKey).catch(e=>console.error('patchmeta failed:',e));
+  renderBolsa();renderAdminUsers();
 }
 function resetQuiniela(qKey){
   const qi=QUINIELAS[qKey];if(!confirm(`¿Resetear toda la quiniela ${qi.name}?`))return;
