@@ -399,7 +399,7 @@ const CHAMP_LOCK_TIME = new Date(Date.UTC(2026,5,11,19,0,0));
 function isChampLocked(){
   return new Date() >= CHAMP_LOCK_TIME;
 }
-const GS_URL='https://script.google.com/macros/s/AKfycbye5VPjDqzAmB2NITvd3BqdgfEQRvQ5SImXIoKWUI8sWdgPHE8hJ0pNxwGFYEo9ej69-w/exec';
+const GS_URL='https://script.google.com/macros/s/AKfycbyuzmaeKnL-YPpfIi1F7wr-N6721sM06ddPtx6FhWxdGimacQuv_ygYCLZrbysMfuHH-A/exec';
 const PHASES=['grupos','dieciseisavos','octavos','cuartos','semis','final'];
 const PHASE_LABELS={grupos:'Grupos',dieciseisavos:'16vos',octavos:'8vos',cuartos:'4tos',semis:'Semis',final:'Final'};
 const QUINIELAS={
@@ -1273,37 +1273,33 @@ async function savePredModal(){
   const msgEl=document.getElementById('pred-modal-msg');
   msgEl.innerHTML='<div class="msg msg-amber">Guardando...</div>';
   try{
-    // Collect only the predictions shown in modal
+    // Collect predictions from modal inputs
     const preds={};
-    const inputs=document.querySelectorAll('#pred-modal-matches input, #pred-modal-matches select');
-    inputs.forEach(inp=>{
+    document.querySelectorAll('#pred-modal-matches input, #pred-modal-matches select').forEach(inp=>{
       const mid=parseInt(inp.dataset.mid);
       const side=inp.dataset.side;
-      if(!mid||isNaN(mid)||!side)return;
-      if(!['home','away','advancer'].includes(side))return;
+      if(!mid||isNaN(mid)||!['home','away','advancer'].includes(side))return;
       if(!preds[mid])preds[mid]={home:'',away:'',advancer:''};
       preds[mid][side]=inp.value;
     });
 
-    // Use patch action - only sends this user's predictions, not full state
-    const payload={
+    // Send as GET request with data param (avoids CORS POST issues)
+    const payload=JSON.stringify({
       user: predModalUser,
       predictions: preds,
       lastEdit: new Date().toISOString()+'(admin)'
-    };
-    const r=await fetch(`${GS_URL}?action=patch&bin=${predModalQ}`,{
-      method:'POST',
-      body:JSON.stringify(payload)
     });
+    const url=`${GS_URL}?action=patch&bin=${predModalQ}&data=${encodeURIComponent(payload)}&t=${Date.now()}`;
+    const r=await fetch(url);
     if(!r.ok)throw new Error('HTTP '+r.status);
     const result=JSON.parse(await r.text());
     if(result.error)throw new Error(result.error);
 
-    // Update local state to match
+    // Update local state
     const u=qStates[predModalQ].users[predModalUser];
-    Object.assign(u.predictions||{},preds);
-    u.predictions=Object.assign(u.predictions||{},preds);
-    u.lastEdit=payload.lastEdit;
+    if(!u.predictions)u.predictions={};
+    Object.assign(u.predictions,preds);
+    u.lastEdit=payload;
 
     setSyncStatus(true);
     msgEl.innerHTML='<div class="msg msg-green">✅ Guardado correctamente</div>';
