@@ -1270,37 +1270,34 @@ function renderPredModalMatches(){
 }
 
 async function savePredModal(){
-  const u=qStates[predModalQ].users[predModalUser];
-  if(!u.predictions)u.predictions={};
-  
-  // Read all inputs in the modal
-  const inputs=document.querySelectorAll('#pred-modal-matches input, #pred-modal-matches select');
-  inputs.forEach(inp=>{
-    const mid=parseInt(inp.dataset.mid);
-    const side=inp.dataset.side;
-    if(!mid||isNaN(mid)||!side)return;
-    if(!['home','away','advancer'].includes(side))return;
-    if(!u.predictions[mid])u.predictions[mid]={home:'',away:'',advancer:''};
-    u.predictions[mid][side]=inp.value;
-  });
-  u.lastEdit=new Date().toISOString()+'(admin)';
-  
   const msgEl=document.getElementById('pred-modal-msg');
   msgEl.innerHTML='<div class="msg msg-amber">Guardando...</div>';
-  
-  clearTimeout(saveTimers[predModalQ]);
   try{
-    // Validate data before save
-    JSON.stringify(qStates[predModalQ]); // throws if circular/corrupt
-    await gsSet(predModalQ,qStates[predModalQ]);
+    // Read current full state from Sheets (source of truth)
+    const current=await gsGet(predModalQ);
+    if(!current.users||!current.users[predModalUser])throw new Error('Usuario no encontrado en Sheets');
+    // Apply modal inputs only to this user
+    const inputs=document.querySelectorAll('#pred-modal-matches input, #pred-modal-matches select');
+    inputs.forEach(inp=>{
+      const mid=parseInt(inp.dataset.mid);
+      const side=inp.dataset.side;
+      if(!mid||isNaN(mid)||!side)return;
+      if(!['home','away','advancer'].includes(side))return;
+      if(!current.users[predModalUser].predictions)current.users[predModalUser].predictions={};
+      if(!current.users[predModalUser].predictions[mid])current.users[predModalUser].predictions[mid]={home:'',away:'',advancer:''};
+      current.users[predModalUser].predictions[mid][side]=inp.value;
+    });
+    current.users[predModalUser].lastEdit=new Date().toISOString()+'(admin)';
+    // Update local state and save merged result
+    qStates[predModalQ]=current;
+    await gsSet(predModalQ,current);
     setSyncStatus(true);
     msgEl.innerHTML='<div class="msg msg-green">✅ Guardado correctamente</div>';
-    renderRanking();
-    renderAdminUsers();
+    renderRanking();renderAdminUsers();
     setTimeout(()=>{msgEl.innerHTML='';},2500);
   }catch(e){
     setSyncStatus(false);
-    console.error('savePredModal error:',e,e?.message,e?.stack);
+    console.error('savePredModal error:',e);
     msgEl.innerHTML=`<div class="msg msg-red">Error: ${e?.message||'Intenta de nuevo'}</div>`;
   }
 }
