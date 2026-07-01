@@ -399,7 +399,7 @@ const CHAMP_LOCK_TIME = new Date(Date.UTC(2026,5,11,19,0,0));
 function isChampLocked(){
   return new Date() >= CHAMP_LOCK_TIME;
 }
-const GS_URL='/api';
+const GS_URL='https://script.google.com/macros/s/AKfycbyuzmaeKnL-YPpfIi1F7wr-N6721sM06ddPtx6FhWxdGimacQuv_ygYCLZrbysMfuHH-A/exec';
 const PHASES=['grupos','dieciseisavos','octavos','cuartos','semis','final'];
 const PHASE_LABELS={grupos:'Grupos',dieciseisavos:'16vos',octavos:'8vos',cuartos:'4tos',semis:'Semis',final:'Final'};
 const QUINIELAS={
@@ -428,16 +428,30 @@ let adminQParticipantes='crew',adminQBolsa='crew',adminRankingQ='crew';
 let adminDateFilter='all',modalTargetUser=null,modalTargetQ=null,saveTimers={};
 
 async function gsGet(bin){
-  const r=await fetch(`${GS_URL}?action=get&bin=${bin}&t=${Date.now()}`);
-  if(!r.ok)throw new Error('GET failed');
-  return JSON.parse(await r.text());
+  const controller=new AbortController();
+  const tid=setTimeout(()=>controller.abort(),15000);
+  try{
+    const r=await fetch(`${GS_URL}?action=get&bin=${bin}&t=${Date.now()}`,{signal:controller.signal});
+    clearTimeout(tid);
+    if(!r.ok)throw new Error('GET failed '+r.status);
+    const txt=await r.text();
+    try{return JSON.parse(txt);}catch(e){throw new Error('Invalid JSON');}
+  }catch(e){clearTimeout(tid);throw e;}
 }
 async function gsSet(bin,data){
-  const r=await fetch(`${GS_URL}?action=set&bin=${bin}`,{method:'POST',body:JSON.stringify(data)});
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  const txt=await r.text();
-  try{const p=JSON.parse(txt);if(p.error)throw new Error(p.error);}
-  catch(e){if(e.message!==txt)throw e;}
+  const controller=new AbortController();
+  const tid=setTimeout(()=>controller.abort(),15000);
+  try{
+    const r=await fetch(`${GS_URL}?action=set&bin=${bin}`,{
+      method:'POST',
+      body:JSON.stringify(data),
+      signal:controller.signal
+    });
+    clearTimeout(tid);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const txt=await r.text();
+    try{const p=JSON.parse(txt);if(p&&p.error)throw new Error(p.error);}catch(e){if(e.message!==txt)throw e;}
+  }catch(e){clearTimeout(tid);throw e;}
 }
 function setSyncStatus(ok){
   const el=document.getElementById('sync-status');if(!el)return;
@@ -445,6 +459,9 @@ function setSyncStatus(ok){
 }
 function scheduleSave(k){clearTimeout(saveTimers[k]);saveTimers[k]=setTimeout(()=>doSave(k),1500);}
 async function doSave(k,attempt=1){
+  // Show saving indicator
+  const si=document.getElementById('save-indicator');
+  if(si&&attempt===1){si.style.display='';si.style.opacity='1';si.style.color='var(--text2)';si.textContent='Guardando...';}
   try{
     const data=k==='global'?gState:qStates[k];
     if(k!=='global'){
@@ -467,6 +484,14 @@ async function doSave(k,attempt=1){
     }else{
       setSyncStatus(false);
       console.error('Save failed after 3 attempts',k,e);
+      // Show persistent warning to user
+      const si=document.getElementById('save-indicator');
+      if(si){
+        si.style.display='';
+        si.style.opacity='1';
+        si.style.color='var(--red)';
+        si.textContent='⚠️ Error al guardar — recarga la página e intenta de nuevo';
+      }
     }
   }
 }
@@ -1024,8 +1049,7 @@ function renderAdminUsers(){
         <span class="badge ${pc}">${pl}</span>
         <div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap">
           <button class="btn btn-xs" onclick="openPassModal('${name}','${qKey}')">🔑</button>
-          <button class="btn btn-xs" style="background:var(--blue-bg);color:var(--blue)" onclick="openPredModal('${name}','${qKey}')">✏️ Picks</button>
-          <button class="btn btn-xs" style="${u.descalificado?'background:#F3F4F6;color:#6B7280':'background:#FEE2E2;color:#991B1B'}" onclick="toggleDescalificado('${name}','${qKey}')">${u.descalificado?'✓ Descal.':'🚫 Descal.'}</button>
+<button class="btn btn-xs" style="${u.descalificado?'background:#F3F4F6;color:#6B7280':'background:#FEE2E2;color:#991B1B'}" onclick="toggleDescalificado('${name}','${qKey}')">${u.descalificado?'✓ Descal.':'🚫 Descal.'}</button>
           <button class="btn btn-danger btn-xs" onclick="resetUser('${name}','${qKey}')">Reset</button>
           <button class="btn btn-danger btn-xs" onclick="deleteUser('${name}','${qKey}')">🗑️ Eliminar</button>
         </div>
