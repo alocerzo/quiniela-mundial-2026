@@ -475,15 +475,10 @@ let adminQParticipantes='crew',adminQBolsa='crew',adminRankingQ='crew';
 let adminDateFilter='all',modalTargetUser=null,modalTargetQ=null,saveTimers={};
 
 async function gsGet(bin){
-  const controller=new AbortController();
-  const tid=setTimeout(()=>controller.abort(),15000);
-  try{
-    const r=await fetch(`${GS_URL}?action=get&bin=${bin}&t=${Date.now()}`,{signal:controller.signal});
-    clearTimeout(tid);
-    if(!r.ok)throw new Error('GET failed '+r.status);
-    const txt=await r.text();
-    try{return JSON.parse(txt);}catch(e){throw new Error('Invalid JSON');}
-  }catch(e){clearTimeout(tid);throw e;}
+  const r=await fetch(`${GS_URL}?action=get&bin=${bin}&t=${Date.now()}`);
+  if(!r.ok)throw new Error('GET failed '+r.status);
+  const txt=await r.text();
+  return JSON.parse(txt);
 }
 async function gsSet(bin,data){
   const r=await fetch(`${GS_URL}?action=set&bin=${bin}`,{method:'POST',body:JSON.stringify(data)});
@@ -1312,135 +1307,6 @@ function closeResultsModal(){
   document.getElementById('results-modal').style.display='none';
 }
 
-// ── PRED MODAL ────────────────────────────────────────────────────────────────
-let predModalUser=null, predModalQ=null;
-
-function openPredModal(name,qKey){
-  predModalUser=name; predModalQ=qKey;
-  document.getElementById('pred-modal-title').textContent='✏️ Picks de '+name;
-  document.getElementById('pred-modal-sub').textContent=QUINIELAS[qKey].emoji+' '+QUINIELAS[qKey].name;
-  document.getElementById('pred-phase-select').value=gState.activePhase;
-  document.getElementById('pred-modal-msg').innerHTML='';
-  renderPredModalMatches();
-  document.getElementById('pred-modal').style.display='flex';
-}
-
-function closePredModal(){
-  document.getElementById('pred-modal').style.display='none';
-  predModalUser=null; predModalQ=null;
-}
-
-function renderPredModalMatches(){
-  const ph=document.getElementById('pred-phase-select').value;
-  const u=qStates[predModalQ].users[predModalUser];
-  const phMatches=MATCHES.filter(m=>m.phase===ph);
-  
-  let html='<div style="display:flex;flex-direction:column;gap:6px">';
-  phMatches.forEach(m=>{
-    const p=u?.predictions?.[m.id]||{home:'',away:''};
-    const r=gState.results[m.id];
-    const played=r&&r.home!==''&&r.away!=='';
-    const eh=gState.elimTeams?.[m.id]?.home||'';
-    const ea=gState.elimTeams?.[m.id]?.away||'';
-    const homeLabel=m.phase==='grupos'?(FLAGS[m.home]||'')+' '+m.home:eh?(FLAGS[eh]||'')+' '+eh:m.home;
-    const awayLabel=m.phase==='grupos'?(FLAGS[m.away]||'')+' '+m.away:ea?(FLAGS[ea]||'')+' '+ea:m.away||m.label;
-    const resultStr=played?` <span style="font-size:10px;color:var(--text3)">(resultado: ${r.home}-${r.away}${r.advancer?' · avanzó: '+(FLAGS[r.advancer]||'')+' '+r.advancer:''})</span>`:'';
-    const isElimMatch=m.phase!=='grupos';
-    const homeName=eh||m.home;
-    const awayName=ea||m.away||m.label;
-    const ph2=parseInt(p.home),pa2=parseInt(p.away);
-    const autoAdv=!isNaN(ph2)&&!isNaN(pa2)&&ph2!==pa2?(ph2>pa2?homeName:awayName):'';
-    const predAdv=p.advancer||autoAdv;
-    html+=`<div style="padding:6px 8px;background:var(--bg2);border-radius:var(--radius-sm);border:1px solid var(--border);display:flex;flex-direction:column;gap:5px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="flex:1;font-size:11px;font-weight:500;min-width:0">${homeLabel}${resultStr}</div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-          <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.home}" data-mid="${m.id}" data-side="home" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
-          <span style="color:var(--text3)">-</span>
-          <input type="text" inputmode="numeric" pattern="[0-9]*" value="${p.away}" data-mid="${m.id}" data-side="away" style="width:36px;height:32px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit"/>
-        </div>
-        <div style="flex:1;font-size:11px;font-weight:500;text-align:right;min-width:0">${awayLabel}</div>
-      </div>
-      ${isElimMatch?`<div style="display:flex;align-items:center;gap:6px;padding-top:3px;border-top:1px solid var(--border)">
-        <span style="font-size:10px;color:var(--text2);flex-shrink:0">🏆 Avanza:</span>
-        <select data-mid="${m.id}" data-side="advancer" style="flex:1;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);font-family:inherit;background:var(--bg);${autoAdv?'opacity:.7':''}">
-          <option value="">— Elige —</option>
-          <option value="${homeName}" ${predAdv===homeName?'selected':''}>${FLAGS[homeName]||''} ${homeName}${autoAdv===homeName?' (auto)':''}</option>
-          <option value="${awayName}" ${predAdv===awayName?'selected':''}>${FLAGS[awayName]||''} ${awayName}${autoAdv===awayName?' (auto)':''}</option>
-        </select>
-        ${autoAdv?'<span style="font-size:10px;color:var(--text3)">🔒</span>':''}
-      </div>`:''}
-    </div>`;
-  });
-  html+='</div>';
-  document.getElementById('pred-modal-matches').innerHTML=html;
-}
-
-async function savePredModal(){
-  const msgEl=document.getElementById('pred-modal-msg');
-  msgEl.innerHTML='<div class="msg msg-amber">Guardando...</div>';
-  try{
-    // Collect predictions from modal inputs
-    const preds={};
-    document.querySelectorAll('#pred-modal-matches input, #pred-modal-matches select').forEach(inp=>{
-      const mid=parseInt(inp.dataset.mid);
-      const side=inp.dataset.side;
-      if(!mid||isNaN(mid)||!['home','away','advancer'].includes(side))return;
-      if(!preds[mid])preds[mid]={home:'',away:'',advancer:''};
-      preds[mid][side]=inp.value;
-    });
-
-    // Send as GET request with data param (avoids CORS POST issues)
-    const payload=JSON.stringify({
-      user: predModalUser,
-      predictions: preds,
-      lastEdit: new Date().toISOString()+'(admin)'
-    });
-    const url=`${GS_URL}?action=patch&bin=${predModalQ}&data=${encodeURIComponent(payload)}&t=${Date.now()}`;
-    const r=await fetch(url);
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const result=JSON.parse(await r.text());
-    if(result.error)throw new Error(result.error);
-
-    // Update local state
-    const u=qStates[predModalQ].users[predModalUser];
-    if(!u.predictions)u.predictions={};
-    Object.assign(u.predictions,preds);
-    u.lastEdit=payload;
-
-    setSyncStatus(true);
-    msgEl.innerHTML='<div class="msg msg-green">✅ Guardado correctamente</div>';
-    renderRanking();renderAdminUsers();
-    setTimeout(()=>{msgEl.innerHTML='';},2500);
-  }catch(e){
-    setSyncStatus(false);
-    console.error('savePredModal error:',e);
-    msgEl.innerHTML=`<div class="msg msg-red">Error: ${e?.message||'Intenta de nuevo'}</div>`;
-  }
-}
-
-function toggleMaintenance(){
-  gState.maintenance=!gState.maintenance;
-  scheduleSave('global');
-  updateMaintenanceUI();
-  showAdminMsg(gState.maintenance?'🔧 Mantenimiento activado':'✅ Mantenimiento desactivado', gState.maintenance?'amber':'green');
-}
-function updateMaintenanceUI(){
-  const overlay=document.getElementById('maint-overlay');
-  const btn=document.getElementById('maint-toggle-btn');
-  const label=document.getElementById('maint-status-label');
-  const on=gState.maintenance&&!isAdmin;
-  if(overlay)overlay.style.display=on?'flex':'none';
-  if(btn){btn.textContent=gState.maintenance?'Desactivar':'Activar';btn.className=gState.maintenance?'btn btn-danger btn-sm':'btn btn-primary btn-sm';}
-  if(label)label.textContent=gState.maintenance?'Activada — usuarios ven pantalla de mantenimiento':'Desactivada — usuarios ven la quiniela normal';
-}
-function enterMaintAdmin(){
-  const pass=prompt('Contraseña:');
-  if(pass===ADMIN_PASS){
-    document.getElementById('loading-overlay').style.display='none';
-    loginAs('admin',true);
-  }
-}
 // ── PICKS MODAL ───────────────────────────────────────────────────────────────
 let predModalUser=null,predModalQ=null;
 
