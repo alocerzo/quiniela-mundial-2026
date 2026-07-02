@@ -143,6 +143,9 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
     <div style="font-size:48px;margin-bottom:1rem">🔧</div>
     <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:.5rem">Mantenimiento en curso</div>
     <div style="font-size:14px;color:var(--text2);max-width:280px;margin:0 auto;line-height:1.6">Estamos haciendo mejoras a la quiniela. Volvemos en unos minutos. ⚽🏆</div>
+    <div style="margin-top:2rem">
+      <button onclick="enterMaintAdmin()" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit;padding:8px">⚙️</button>
+    </div>
   </div>
 </div>
 
@@ -1371,6 +1374,13 @@ async function savePredModal(){
   }
 }
 
+function enterMaintAdmin(){
+  const pass=prompt('Contraseña:');
+  if(pass===ADMIN_PASS){
+    document.getElementById('loading-overlay').style.display='none';
+    loginAs('admin',true);
+  }
+}
 init();
 // Auto-refresh data every 60 seconds (only ranking, silent)
 // auto-refresh removed to reduce Apps Script load
