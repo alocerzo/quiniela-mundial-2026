@@ -379,6 +379,14 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
         <div style="flex:1;min-width:180px"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;font-weight:500">Goleador real</label><input type="text" id="admin-scorer" style="width:100%" placeholder="Nombre del goleador" oninput="saveGlobalField('scorer',this.value)"/></div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:1rem">
+        <div class="section-label">Mantenimiento</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem;padding:10px 14px;background:var(--bg2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">Pantalla de mantenimiento</div>
+            <div style="font-size:12px;color:var(--text2)" id="maint-status-label">Desactivada</div>
+          </div>
+          <button id="maint-toggle-btn" class="btn btn-sm btn-primary" onclick="toggleMaintenance()">Activar</button>
+        </div>
         <div class="section-label">Zona de peligro</div>
         <p style="font-size:12px;color:var(--text2);margin-bottom:.75rem">Resetear elimina usuarios, predicciones y pagos. Los resultados de partidos no se borran.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
