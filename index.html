@@ -490,26 +490,11 @@ async function gsPatchMeta(bin){
 // Per-user debounced patch
 const userPatchTimers={};
 function scheduleUserPatch(bin,username){
-  const key=bin+'__'+username;
-  clearTimeout(userPatchTimers[key]);
-  userPatchTimers[key]=setTimeout(async()=>{
-    const si=document.getElementById('save-indicator');
-    if(si){si.style.display='';si.style.opacity='1';si.style.color='var(--text2)';si.textContent='Guardando...';}
-    try{
-      await gsPatchUser(bin,username);
-      setSyncStatus(true);showSaved();
-    }catch(e){
-      setSyncStatus(false);
-      console.error('Patch failed:',e);
-      // Retry once
-      setTimeout(async()=>{
-        try{await gsPatchUser(bin,username);setSyncStatus(true);showSaved();}
-        catch(e2){
-          if(si){si.style.display='';si.style.opacity='1';si.style.color='var(--red)';si.textContent='⚠️ Error al guardar — recarga la página';}
-        }
-      },3000);
-    }
-  },800);
+  // Mark button as pending - user must click save
+  const btn=document.getElementById('save-picks-btn');
+  if(btn&&btn.textContent!=='Guardando...'){
+    btn.style.background='#B45309';btn.textContent='💾 Guardar picks *';
+  }
 }
 function setSyncStatus(ok){
   const el=document.getElementById('sync-status');if(!el)return;
@@ -905,9 +890,22 @@ function saveMeta(){
   scheduleUserPatch(activeQ,currentUser);
 }
 function showSaved(){
-  const el=document.getElementById('save-indicator');if(!el)return;
-  el.style.display='';el.style.opacity='1';clearTimeout(window._st);
-  window._st=setTimeout(()=>{el.style.opacity='0';setTimeout(()=>{el.style.display='none';},400);},2000);
+  const btn=document.getElementById('save-picks-btn');
+  if(btn){btn.style.background='var(--green)';btn.textContent='✅ Guardado';btn.disabled=false;
+    setTimeout(()=>{btn.style.background='var(--navy)';btn.textContent='💾 Guardar picks';},2500);}
+}
+async function savePicksNow(){
+  if(!currentUser||isAdmin||!activeQ)return;
+  const btn=document.getElementById('save-picks-btn');
+  if(btn){btn.disabled=true;btn.style.background='var(--text2)';btn.textContent='Guardando...';}
+  try{
+    await gsPatchUser(activeQ,currentUser);
+    setSyncStatus(true);showSaved();
+  }catch(e){
+    setSyncStatus(false);
+    if(btn){btn.disabled=false;btn.style.background='var(--red)';btn.textContent='⚠️ Error — reintentar';}
+    setTimeout(()=>{if(btn){btn.style.background='var(--navy)';btn.textContent='💾 Guardar picks';btn.disabled=false;}},3000);
+  }
 }
 function populateSelects(){
   const opts=ALL_TEAMS.map(t=>`<option value="${t}">${FLAGS[t]||''} ${t}</option>`).join('');
@@ -1370,6 +1368,17 @@ async function savePredModal(){
   }
 }
 
+// Flush pending saves before page unload
+window.addEventListener('beforeunload', ()=>{
+  Object.keys(userPatchTimers).forEach(key=>{
+    clearTimeout(userPatchTimers[key]);
+    const parts=key.split('__');
+    if(parts.length===2){
+      const payload=JSON.stringify({user:parts[1],predictions:qStates[parts[0]]?.users[parts[1]]?.predictions||{},champion:qStates[parts[0]]?.users[parts[1]]?.champion||'',scorer:qStates[parts[0]]?.users[parts[1]]?.scorer||'',lastEdit:new Date().toISOString(),pass:qStates[parts[0]]?.users[parts[1]]?.pass||'',registeredAt:qStates[parts[0]]?.users[parts[1]]?.registeredAt||'',seenOnboarding:qStates[parts[0]]?.users[parts[1]]?.seenOnboarding||false});
+      navigator.sendBeacon(`${GS_URL}?action=patch&bin=${parts[0]}`,payload);
+    }
+  });
+});
 init();
 // Auto-refresh data every 60 seconds (only ranking, silent)
 // auto-refresh removed to reduce Apps Script load
