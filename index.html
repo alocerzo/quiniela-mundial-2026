@@ -347,10 +347,10 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
     </div>
     <div style="font-size:11px;color:var(--text3)" id="champ-lock-note">Editables hasta el inicio del primer partido (11 Jun · 13:00 CDMX)</div>
   </div>
-  <div id="match-area"></div>
-  <div class="save-bar">
-    <div style="display:flex;flex-direction:column;gap:3px;flex:1">
-      <div style="font-size:12px;color:var(--text2)" id="progress-text"></div>
+  <div id="match-area"></div><div class="save-bar">
+    <div style="font-size:12px;color:var(--text2)" id="progress-text"></div>
+    <button id="save-picks-btn" class="btn btn-primary" onclick="savePicksNow()" style="min-width:150px">💾 Guardar picks</button>
+  </div></div>
       <div id="progress-bar-wrap" style="height:5px;background:var(--border);border-radius:10px;overflow:hidden;display:none">
         <div id="progress-bar-fill" style="height:5px;background:var(--navy);border-radius:10px;transition:width .4s"></div>
       </div>
