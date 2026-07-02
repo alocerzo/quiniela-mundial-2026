@@ -139,8 +139,11 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
 <div class="app">
 
 <div class="loading-overlay" id="loading-overlay">
-  <div class="spinner"></div>
-  <div style="font-size:14px;color:var(--text2);font-weight:500">Cargando quiniela...</div>
+  <div style="text-align:center;padding:2rem">
+    <div style="font-size:48px;margin-bottom:1rem">🔧</div>
+    <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:.5rem">Mantenimiento en curso</div>
+    <div style="font-size:14px;color:var(--text2);max-width:280px;margin:0 auto;line-height:1.6">Estamos haciendo mejoras a la quiniela. Volvemos en unos minutos. ⚽🏆</div>
+  </div>
 </div>
 
 <div class="modal-overlay" id="q-select-modal" style="display:none">
@@ -531,7 +534,7 @@ async function init(){
     gState={...gState,...g};qStates.crew={...qStates.crew,...c};qStates.actinver={...qStates.actinver,...a};
     setSyncStatus(true);
   }catch(e){setSyncStatus(false);}
-  showLoading(false);
+  // showLoading(false); // maintenance mode
   detectQuiniela();
   renderRanking();
 }
