@@ -139,14 +139,8 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
 <div class="app">
 
 <div class="loading-overlay" id="loading-overlay">
-  <div style="text-align:center;padding:2rem">
-    <div style="font-size:48px;margin-bottom:1rem">🔧</div>
-    <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:.5rem">Mantenimiento en curso</div>
-    <div style="font-size:14px;color:var(--text2);max-width:280px;margin:0 auto;line-height:1.6">Estamos haciendo mejoras a la quiniela. Volvemos en unos minutos. ⚽🏆</div>
-    <div style="margin-top:2rem">
-      <button onclick="enterMaintAdmin()" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit;padding:8px">⚙️</button>
-    </div>
-  </div>
+  <div class="spinner"></div>
+  <div style="font-size:14px;color:var(--text2);font-weight:500">Cargando quiniela...</div>
 </div>
 
 <div class="modal-overlay" id="q-select-modal" style="display:none">
@@ -224,6 +218,16 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
       <button onclick="closeResultsModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text2)">×</button>
     </div>
     <div id="results-modal-content" style="max-height:65vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- MAINTENANCE OVERLAY -->
+<div id="maint-overlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,.97);z-index:400;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem">
+  <div style="font-size:48px;margin-bottom:1rem">🔧</div>
+  <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:.5rem">Mantenimiento en curso</div>
+  <div style="font-size:14px;color:var(--text2);max-width:280px;margin:0 auto;line-height:1.6">Estamos haciendo mejoras a la quiniela. Volvemos en unos minutos. ⚽🏆</div>
+  <div style="margin-top:2rem">
+    <button onclick="enterMaintAdmin()" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit;padding:8px">⚙️</button>
   </div>
 </div>
 
@@ -426,7 +430,7 @@ const MATCHES=[
   ME(103,'final','3er lugar','Perdedor SF1','Perdedor SF2','2026-07-18','15:00','Miami'),ME(104,'final','Final','Ganador SF1','Ganador SF2','2026-07-19','13:00','MetLife NJ'),
 ];
 
-let gState={results:{},activePhase:'grupos',closedPhases:[],champion:'',scorer:'',elimTeams:{}};
+let gState={results:{},activePhase:'grupos',closedPhases:[],champion:'',scorer:'',elimTeams:{},maintenance:false};
 let qStates={crew:{users:{},pagos:{},cuota:500},actinver:{users:{},pagos:{},cuota:500}};
 let activeQ=null,currentUser=null,isAdmin=false;
 let currentGroup='A',currentViewPhase='grupos';
@@ -470,6 +474,7 @@ async function gsPatchUser(bin,username){
 }
 
 async function gsPatchMeta(bin){
+  if(bin==='global')return; // never overwrite global with patchmeta
   const meta=JSON.stringify({
     pagos:qStates[bin].pagos||{},
     cuota:qStates[bin].cuota||0
@@ -512,9 +517,10 @@ async function doSave(k,attempt=1){
   if(si&&attempt===1){si.style.display='';si.style.opacity='1';si.style.color='var(--text2)';si.textContent='Guardando...';}
   try{
     if(k==='global'){
+      // global: always use full set (results, phase, etc)
       await gsSet(k,gState);
     } else {
-      // Use patch per-user instead of full set — avoids 50k char limit
+      // user bins: patch meta (pagos/cuota) only - users are patched individually
       await gsPatchMeta(k);
     }
     setSyncStatus(true);showSaved();
@@ -537,7 +543,8 @@ async function init(){
     gState={...gState,...g};qStates.crew={...qStates.crew,...c};qStates.actinver={...qStates.actinver,...a};
     setSyncStatus(true);
   }catch(e){setSyncStatus(false);}
-  // showLoading(false); // maintenance mode
+  showLoading(false);
+  updateMaintenanceUI();
   detectQuiniela();
   renderRanking();
 }
@@ -1374,6 +1381,21 @@ async function savePredModal(){
   }
 }
 
+function toggleMaintenance(){
+  gState.maintenance=!gState.maintenance;
+  scheduleSave('global');
+  updateMaintenanceUI();
+  showAdminMsg(gState.maintenance?'🔧 Mantenimiento activado':'✅ Mantenimiento desactivado', gState.maintenance?'amber':'green');
+}
+function updateMaintenanceUI(){
+  const overlay=document.getElementById('maint-overlay');
+  const btn=document.getElementById('maint-toggle-btn');
+  const label=document.getElementById('maint-status-label');
+  const on=gState.maintenance&&!isAdmin;
+  if(overlay)overlay.style.display=on?'flex':'none';
+  if(btn){btn.textContent=gState.maintenance?'Desactivar':'Activar';btn.className=gState.maintenance?'btn btn-danger btn-sm':'btn btn-primary btn-sm';}
+  if(label)label.textContent=gState.maintenance?'Activada — usuarios ven pantalla de mantenimiento':'Desactivada — usuarios ven la quiniela normal';
+}
 function enterMaintAdmin(){
   const pass=prompt('Contraseña:');
   if(pass===ADMIN_PASS){
